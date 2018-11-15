@@ -2,8 +2,7 @@
 
 #include <array>
 
-#include <Adafruit_NeoPixel.h>
-#include <MLEDScroll.h>
+#include <LEDMatrixDriver.hpp>
 
 #include <math.h>
 
@@ -11,7 +10,7 @@
 
 int16_t buffer[dataSize * 2];
 
-MLEDScroll matrix(1, D7, D5, true);
+LEDMatrixDriver lmd(4, 2);
 
 static inline unsigned get_ccount(void)
 {
@@ -29,15 +28,12 @@ int16_t filter(int16_t* data, int16_t* coeffs, int len)
 }
 
 
-Adafruit_NeoPixel pixels(1, D2, NEO_GRB + NEO_KHZ800);
-
 void setup() 
 {
   Serial.begin(115200);
   Serial.println("Hello!");
-  matrix.begin();
-  pinMode(D2, OUTPUT);
-  pixels.begin();
+  lmd.setEnabled(true);
+  lmd.setIntensity(2);
 }
 
 void loop() 
@@ -66,12 +62,11 @@ void loop()
   }
 
   // Prepare top values
-  std::array<float, 8> results;
-  int MM = -10000;
+  std::array<int16_t, filters> results;
   // For each of the filters
-  for (int f = 0; f < 8; f++)
+  for (int f = 0; f < filters; f++)
   { 
-    float M = -1000000.0;
+    int16_t M = -32000;
     // Calculate responses for samples
     for (int i = 0; i < dataSize; i++)
     {
@@ -82,33 +77,26 @@ void loop()
 
     //calculate overall top value
     results[f] = M;
-    if (M > MM)
-      MM = M;
   }
 
-  for (int i = 0; i < 8; i++)
+  for (int i = 0; i < filters; i++)
   {
     results[i] = (logf(results[i]+1)-1) * 3;
-    if (results[i] < 0) results[i] = 0;
-    if (results[i] > 8) results[i] = 8;
+    results[i] = min(results[i], (int16_t)8);
+    results[i] = max(results[i], (int16_t)0);
+    //Serial.println(results[i]);
   }
   
-  matrix.clear();
-
+  lmd.clear();
+  
   static const uint8_t lookup[9] = {0, 1, 3, 7, 15, 31, 63, 127, 255};
 
-  for (int f = 0; f < 8; f++)
+  for (int f = 0; f < filters; f++)
   {
     int d = results[f];
-    matrix.disBuffer[7-f] = lookup[d];
-    matrix.disBuffer[15-f] = lookup[d];
+    lmd.setColumn(31-f, lookup[d]);
   }
 
-  matrix.display();
-
-  if (MM>255)
-    MM = 255;
-
-  pixels.setPixelColor(0, pixels.Color(MM,0,MM)); // Moderately bright green color
-  pixels.show();
+  
+  lmd.display();
 }
